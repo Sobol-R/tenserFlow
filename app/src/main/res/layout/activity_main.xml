@@ -7,6 +7,7 @@
     tools:context=".MainActivity">
 
     <fragment
+        android:id="@+id/CameraFragment"
         android:name="banana.digital.myapplication.CameraFragment"
         android:layout_width="match_parent"
         android:layout_height="match_parent"/>
