@@ -5,7 +5,6 @@ import android.Manifest;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.graphics.Bitmap;
-import android.graphics.Camera;
 import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
@@ -20,20 +19,19 @@ import android.os.HandlerThread;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.v4.app.Fragment;
-import android.text.TextUtils;
-import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.Surface;
 import android.view.TextureView;
 import android.view.View;
 import android.view.ViewGroup;
-import android.webkit.PermissionRequest;
 import android.widget.TextView;
 
 import com.google.android.gms.tasks.OnSuccessListener;
-import com.google.android.gms.vision.Detector;
 import com.google.firebase.ml.vision.FirebaseVision;
 import com.google.firebase.ml.vision.common.FirebaseVisionImage;
+import com.google.firebase.ml.vision.face.FirebaseVisionFace;
+import com.google.firebase.ml.vision.face.FirebaseVisionFaceDetector;
+import com.google.firebase.ml.vision.face.FirebaseVisionFaceDetectorOptions;
 import com.google.firebase.ml.vision.label.FirebaseVisionLabel;
 import com.google.firebase.ml.vision.label.FirebaseVisionLabelDetector;
 import com.google.firebase.ml.vision.label.FirebaseVisionLabelDetectorOptions;
@@ -61,6 +59,9 @@ public class CameraFragment extends Fragment {
     private Handler backgroundHandler;
 
     private FirebaseVisionLabelDetector firebaseVisionLabelDetector;
+    private FirebaseVisionFaceDetector firebaseVisionFaceDetector;
+
+    FaceView faceView;
 
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
@@ -74,12 +75,14 @@ public class CameraFragment extends Fragment {
         super.onViewCreated(view, savedInstanceState);
         textureView = view.findViewById(R.id.texture_view);
         textView = view.findViewById(R.id.text);
+        faceView = view.findViewById(R.id.face_view);
     }
 
     @Override
     public void onResume() {
         super.onResume();
-        initializeDetector();
+        initializeLabelDetector();
+        initializeFaceDetector();
         if (textureView.isAvailable()) checkPermission();
         else {
             textureView.setSurfaceTextureListener(new TextureView.SurfaceTextureListener() {
@@ -106,12 +109,23 @@ public class CameraFragment extends Fragment {
         }
     }
 
-    private void initializeDetector() {
+    private void initializeLabelDetector() {
         FirebaseVisionLabelDetectorOptions options =
                 new FirebaseVisionLabelDetectorOptions.Builder()
                         .setConfidenceThreshold(0.8f)
                         .build();
         firebaseVisionLabelDetector = FirebaseVision.getInstance().getVisionLabelDetector(options);
+    }
+
+    private void initializeFaceDetector() {
+        FirebaseVisionFaceDetectorOptions options =
+                new FirebaseVisionFaceDetectorOptions.Builder()
+                        .setContourMode(FirebaseVisionFaceDetectorOptions.ALL_CONTOURS)
+                        .setPerformanceMode(FirebaseVisionFaceDetectorOptions.FAST)
+                        .setLandmarkMode(FirebaseVisionFaceDetectorOptions.NO_LANDMARKS)
+                        .setClassificationMode(FirebaseVisionFaceDetectorOptions.NO_CLASSIFICATIONS)
+                        .build();
+        firebaseVisionFaceDetector = FirebaseVision.getInstance().getVisionFaceDetector(options);
     }
 
     private void checkPermission() {
@@ -206,6 +220,7 @@ public class CameraFragment extends Fragment {
                 public void onCaptureStarted(@androidx.annotation.NonNull @NonNull CameraCaptureSession session, @androidx.annotation.NonNull @NonNull CaptureRequest request, long timestamp, long frameNumber) {
                     super.onCaptureStarted(session, request, timestamp, frameNumber);
                     firebaseStartLabelDetecting();
+                    firebaseStartFaceDetecting();
                 }
             }, backgroundHandler);
         } catch (CameraAccessException e) {
@@ -223,18 +238,46 @@ public class CameraFragment extends Fragment {
     }
 
     private void processFirebaseLabelDetecting() {
+        final long now = System.currentTimeMillis();
         Bitmap bitmap = textureView.getBitmap();
         FirebaseVisionImage image = FirebaseVisionImage.fromBitmap(bitmap);
         firebaseVisionLabelDetector.detectInImage(image)
                 .addOnSuccessListener(new OnSuccessListener<List<FirebaseVisionLabel>>() {
                     @Override
                     public void onSuccess(List<FirebaseVisionLabel> firebaseVisionLabels) {
+                        String result = (System.currentTimeMillis() - now) + "ms\n";
                         final List<String> labels = new ArrayList<>();
                         for (FirebaseVisionLabel visionLabel : firebaseVisionLabels) {
+                            result += visionLabel.getLabel() + " - " + visionLabel.getConfidence() + "\n";
                             labels.add(visionLabel.getLabel());
                         }
-                        textView.setText(TextUtils.join(",", labels));
+                        textView.setText(result);
                         processFirebaseLabelDetecting();
+                    }
+                });
+    }
+
+    private boolean firebaseFaceDetectingStarted = false;
+
+    private void firebaseStartFaceDetecting() {
+        if (!firebaseFaceDetectingStarted) {
+            firebaseLabelDetectingStarted = true;
+            processFirebaseFaceDetecting();
+        }
+    }
+
+    private void processFirebaseFaceDetecting() {
+        final long now = System.currentTimeMillis();
+        Bitmap bitmap = textureView.getBitmap();
+        Bitmap scaleBitmap = Bitmap.createScaledBitmap(bitmap, (int) (bitmap.getWidth() * 0.3f), (int) (bitmap.getHeight() * 0.3f), true);
+        FirebaseVisionImage image = FirebaseVisionImage.fromBitmap(scaleBitmap);
+        firebaseVisionFaceDetector.detectInImage(image)
+                .addOnSuccessListener(new OnSuccessListener<List<FirebaseVisionFace>>() {
+                    @Override
+                    public void onSuccess(List<FirebaseVisionFace> firebaseVisionFaces) {
+                        System.out.println("onSuccess" + firebaseVisionFaces.size());
+                        faceView.showFaces(firebaseVisionFaces);
+                        processFirebaseFaceDetecting();
                     }
                 });
     }
