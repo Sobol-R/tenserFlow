@@ -4,10 +4,14 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.Path;
 import android.util.AttributeSet;
 import android.view.View;
 
+import com.google.firebase.ml.vision.FirebaseVision;
+import com.google.firebase.ml.vision.common.FirebaseVisionPoint;
 import com.google.firebase.ml.vision.face.FirebaseVisionFace;
+import com.google.firebase.ml.vision.face.FirebaseVisionFaceContour;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -17,8 +21,10 @@ import androidx.annotation.Nullable;
 public class FaceView extends View {
 
     List <FirebaseVisionFace> mFaces = new ArrayList<>();
+    float scale;
 
     Paint paint;
+    Path path;
 
     public FaceView(Context context) {
         super(context);
@@ -40,8 +46,9 @@ public class FaceView extends View {
         initialize();
     }
 
-    public void showFaces(List<FirebaseVisionFace> faces) {
+    public void showFaces(List<FirebaseVisionFace> faces, float ratio) {
         mFaces = faces;
+        scale = ratio;
         invalidate();
     }
 
@@ -50,8 +57,17 @@ public class FaceView extends View {
         super.onDraw(canvas);
         if (mFaces != null) {
             for (FirebaseVisionFace face : mFaces) {
-                canvas.drawRect(face.getBoundingBox().left / 0.3f, face.getBoundingBox().top / 0.3f,
-                        face.getBoundingBox().right / 0.3f, face.getBoundingBox().bottom / 0.3f, paint);
+                FirebaseVisionFaceContour contour = face.getContour(FirebaseVisionFaceContour.ALL_POINTS);
+                List <FirebaseVisionPoint> points = contour.getPoints();
+                for (FirebaseVisionPoint point : points) {
+                    canvas.drawCircle(point.getX() * scale, point.getY() * scale, 0.01f, paint);
+                }
+//                for (int i = 0; i < points.size() - 1; i++) {
+//                    FirebaseVisionPoint point = points.get(i + 1);
+//                    if (i == 0) path.moveTo(points.get(i).getX() * scale, points.get(i).getY() * scale);
+//                    path.lineTo(point.getX() * scale, point.getY() * scale);
+//                }
+                path.rewind();
             }
         }
     }
@@ -62,5 +78,6 @@ public class FaceView extends View {
         paint.setStyle(Paint.Style.STROKE);
         paint.setColor(Color.RED);
         paint.setStrokeWidth(10);
+        path = new Path();
     }
 }

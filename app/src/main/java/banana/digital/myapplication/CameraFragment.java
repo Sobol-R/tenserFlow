@@ -3,9 +3,12 @@ package banana.digital.myapplication;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
+import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.SurfaceTexture;
+import android.hardware.Camera;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CameraCharacteristics;
@@ -13,22 +16,30 @@ import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CameraMetadata;
 import android.hardware.camera2.CaptureRequest;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.provider.MediaStore;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
+import android.support.v4.app.DialogFragment;
 import android.support.v4.app.Fragment;
 import android.view.LayoutInflater;
 import android.view.Surface;
+import android.view.SurfaceHolder;
 import android.view.TextureView;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.Button;
+import android.widget.ImageView;
 import android.widget.TextView;
 
 import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.firebase.ml.vision.FirebaseVision;
 import com.google.firebase.ml.vision.common.FirebaseVisionImage;
+import com.google.firebase.ml.vision.common.FirebaseVisionImageMetadata;
+import com.google.firebase.ml.vision.common.FirebaseVisionPoint;
 import com.google.firebase.ml.vision.face.FirebaseVisionFace;
 import com.google.firebase.ml.vision.face.FirebaseVisionFaceDetector;
 import com.google.firebase.ml.vision.face.FirebaseVisionFaceDetectorOptions;
@@ -41,6 +52,8 @@ import com.karumi.dexter.listener.PermissionDeniedResponse;
 import com.karumi.dexter.listener.PermissionGrantedResponse;
 import com.karumi.dexter.listener.single.PermissionListener;
 
+import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -128,6 +141,9 @@ public class CameraFragment extends Fragment {
         firebaseVisionFaceDetector = FirebaseVision.getInstance().getVisionFaceDetector(options);
     }
 
+    private void initializeTensorFlowLabelDetector() {
+    }
+
     private void checkPermission() {
         Dexter.withActivity(getActivity())
             .withPermission(Manifest.permission.CAMERA)
@@ -157,16 +173,17 @@ public class CameraFragment extends Fragment {
         if (cameraManager != null) {
             try {
                 final String[] cameraIds = cameraManager.getCameraIdList();
-                String backCameraId = null;
+                //String backCameraId = null;
+                String frontCameraId = null;
                 for (String id : cameraIds) {
                     final CameraCharacteristics characteristics = cameraManager.getCameraCharacteristics(id);
-                    if (characteristics.get(CameraCharacteristics.LENS_FACING) == CameraMetadata.LENS_FACING_BACK) {
-                        backCameraId = id;
+                    if (characteristics.get(CameraCharacteristics.LENS_FACING) == CameraMetadata.LENS_FACING_FRONT) {
+                        frontCameraId = id;
                     }
                 }
 
-                if (backCameraId != null) {
-                    cameraManager.openCamera(backCameraId, new CameraDevice.StateCallback() {
+                if (frontCameraId != null) {
+                    cameraManager.openCamera(frontCameraId, new CameraDevice.StateCallback() {
                         @Override
                         public void onOpened(@NonNull CameraDevice cameraDevice) {
                             captureCamera(cameraDevice);
@@ -192,6 +209,7 @@ public class CameraFragment extends Fragment {
 
     private void captureCamera(@NonNull final CameraDevice cameraDevice) {
         final Surface surface = new Surface(textureView.getSurfaceTexture());
+
         final List<Surface> surfaces = Arrays.asList(surface);
         try {
             cameraDevice.createCaptureSession(surfaces, new CameraCaptureSession.StateCallback() {
@@ -251,7 +269,7 @@ public class CameraFragment extends Fragment {
                             result += visionLabel.getLabel() + " - " + visionLabel.getConfidence() + "\n";
                             labels.add(visionLabel.getLabel());
                         }
-                        textView.setText(result);
+                        //textView.setText(result);
                         processFirebaseLabelDetecting();
                     }
                 });
@@ -261,13 +279,12 @@ public class CameraFragment extends Fragment {
 
     private void firebaseStartFaceDetecting() {
         if (!firebaseFaceDetectingStarted) {
-            firebaseLabelDetectingStarted = true;
+            firebaseFaceDetectingStarted = true;
             processFirebaseFaceDetecting();
         }
     }
 
     private void processFirebaseFaceDetecting() {
-        final long now = System.currentTimeMillis();
         Bitmap bitmap = textureView.getBitmap();
         Bitmap scaleBitmap = Bitmap.createScaledBitmap(bitmap, (int) (bitmap.getWidth() * 0.3f), (int) (bitmap.getHeight() * 0.3f), true);
         FirebaseVisionImage image = FirebaseVisionImage.fromBitmap(scaleBitmap);
@@ -275,11 +292,80 @@ public class CameraFragment extends Fragment {
                 .addOnSuccessListener(new OnSuccessListener<List<FirebaseVisionFace>>() {
                     @Override
                     public void onSuccess(List<FirebaseVisionFace> firebaseVisionFaces) {
-                        System.out.println("onSuccess" + firebaseVisionFaces.size());
-                        faceView.showFaces(firebaseVisionFaces);
+                        faceView.showFaces(firebaseVisionFaces, 1f / 0.3f);
                         processFirebaseFaceDetecting();
                     }
                 });
+//        final int width = 400;
+//        Bitmap bitmap = textureView.getBitmap();
+//        final float scale = (float) (width / bitmap.getWidth());
+//        final int height = (int) (bitmap.getHeight() * scale);
+//        Bitmap scaleBitmap = Bitmap.createScaledBitmap(bitmap, (width), (height), true);
+//
+//        byte[] bytes = getYV12(width, height, scaleBitmap);
+//        FirebaseVisionImageMetadata metadata = new FirebaseVisionImageMetadata.Builder()
+//                .setFormat(FirebaseVisionImageMetadata.IMAGE_FORMAT_YV12)
+//                .build();
+//        FirebaseVisionImage image = FirebaseVisionImage.fromByteArray(bytes, metadata);
+//        firebaseVisionFaceDetector.detectInImage(image)
+//                .addOnSuccessListener(new OnSuccessListener<List<FirebaseVisionFace>>() {
+//                    @Override
+//                    public void onSuccess(List<FirebaseVisionFace> firebaseVisionFaces) {
+//                        System.out.println("onSuccess" + firebaseVisionFaces.size());
+//                        faceView.showFaces(firebaseVisionFaces, 1 / scale);
+//                        processFirebaseFaceDetecting();
+//                    }
+//                });
+    }
+
+    private byte [] getYV12(int inputWidth, int inputHeight, Bitmap scaled) {
+
+        int [] argb = new int[inputWidth * inputHeight];
+
+        scaled.getPixels(argb, 0, inputWidth, 0, 0, inputWidth, inputHeight);
+
+        byte [] yuv = new byte[inputHeight * inputWidth + 2 * (int) Math.ceil(inputHeight/2.0) *(int) Math.ceil(inputWidth/2.0)];
+        encodeYV12(yuv, argb, inputWidth, inputHeight);
+
+        scaled.recycle();
+
+        return yuv;
+    }
+
+    private void encodeYV12(byte[] yuv420sp, int[] argb, int width, int height) {
+        final int frameSize = width * height;
+
+        int yIndex = 0;
+        int uIndex = frameSize;
+        int vIndex = frameSize + (frameSize / 4);
+
+        int a, R, G, B, Y, U, V;
+        int index = 0;
+        for (int j = 0; j < height; j++) {
+            for (int i = 0; i < width; i++) {
+
+                a = (argb[index] & 0xff000000) >> 24; // a is not used obviously
+                R = (argb[index] & 0xff0000) >> 16;
+                G = (argb[index] & 0xff00) >> 8;
+                B = (argb[index] & 0xff) >> 0;
+
+                // well known RGB to YUV algorithm
+                Y = ( (  66 * R + 129 * G +  25 * B + 128) >> 8) +  16;
+                U = ( ( -38 * R -  74 * G + 112 * B + 128) >> 8) + 128;
+                V = ( ( 112 * R -  94 * G -  18 * B + 128) >> 8) + 128;
+
+                // YV12 has a plane of Y and two chroma plans (U, V) planes each sampled by a factor of 2
+                //    meaning for every 4 Y pixels there are 1 V and 1 U.  Note the sampling is every other
+                //    pixel AND every other scanline.
+                yuv420sp[yIndex++] = (byte) ((Y < 0) ? 0 : ((Y > 255) ? 255 : Y));
+                if (j % 2 == 0 && index % 2 == 0) {
+                    yuv420sp[uIndex++] = (byte)((V<0) ? 0 : ((V > 255) ? 255 : V));
+                    yuv420sp[vIndex++] = (byte)((U<0) ? 0 : ((U > 255) ? 255 : U));
+                }
+
+                index ++;
+            }
+        }
     }
 
 }
